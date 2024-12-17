@@ -18,6 +18,7 @@ References
 -- https://steam.oxxostudio.tw/category/python/ai/opencv-take-picture.html
 -- https://steam.oxxostudio.tw/category/python/ai/opencv-keyboard.html
 -- https://steam.oxxostudio.tw/category/python/ai/opencv-qrcode-barcode.html
+-- https://steam.oxxostudio.tw/category/python/ai/opencv-negative.html
 -- https://stackoverflow.com/questions/69050464/zoom-into-image-with-opencv
 -- https://claude.ai
 
@@ -99,6 +100,11 @@ def grayscale(image, channels=3):
     return multi_chan_gray
 
 
+def negative(image):
+    image = 255 - image
+    return image
+
+
 def resize_for_display(image,
                        width=1920,
                        height=1080,
@@ -106,7 +112,7 @@ def resize_for_display(image,
                        min_resize_ratio=0.1):
     """  """
     # Early stop
-    if resize_ratio == 1.0:
+    if round(resize_ratio, 3) == 1.0:
         return image
     # Set minimal value
     if resize_ratio < min_resize_ratio:
@@ -304,6 +310,7 @@ def main():
     alpha, contrast, brightness = 0, 0, 0
     zoom, rotation, center_x_offset, center_y_offset = 1.0, 0, 0, 0
     zoom_step, rotation_step, offset_step = 0.1, 15, 100
+    resize_ratio_step = 0.1
     # Flag
     zbar_decoder_on = args.zbar_decoder
     barcode_decoder_on = args.qrcode_decoder
@@ -318,6 +325,8 @@ def main():
     noise_suppression_method = noise_suppression_methods[0]
     # Grayscale
     grayscale_on = False
+    # Negative
+    negative_on = False
 
     # Main
     while True:
@@ -417,6 +426,14 @@ def main():
             frame = grayscale(frame)
 
         # ====================================================================
+        # Module: Negative
+        # ====================================================================
+        if key == ord('i'):
+            negative_on = toggle_bool_option(negative_on)
+        if negative_on:
+            frame = negative(frame)
+
+        # ====================================================================
         # Module: Adjust color parameters
         # ====================================================================
         # Set contrast (down/up <-> dec/inc)
@@ -430,7 +447,7 @@ def main():
         if key == 84:
             contrast -= 5
         # Restore brightness and contrast
-        if key == 8: # Backspace
+        if key == 8:  # Backspace
             brightness, contrast = 0, 0
         # Show brightness/contrast on OSD
         OSD_text += f'B: {brightness:d} C: {contrast:d} '
@@ -440,10 +457,10 @@ def main():
         frame = color_adjust(frame, contrast, brightness)
 
         # ====================================================================
-        # Module: Take a shot
+        # Module: Take a snapshot
         # ====================================================================
         # Set alpha value to 1 when space is pressed
-        if key == 32: # Spacebar
+        if key == 32:  # Spacebar
             alpha = 1
         # Take a snapshot when alpha decreases from 1 to 0
         if alpha != 0:
@@ -528,7 +545,19 @@ def main():
                                     width=width,
                                     height=height,
                                     resize_ratio=resize_ratio)
-        if resize_ratio != 1.0:
+        # Expand
+        if key == ord('+'):
+            resize_ratio += resize_ratio_step
+            print(f'[INFO] Resize ratio: {resize_ratio:.1f}')
+        # Shrink
+        if key == ord('_'):
+            resize_ratio -= resize_ratio_step
+            if resize_ratio < resize_ratio_step:
+                print(f'[Warning] Reached minimal resize ratio {resize_ratio}')
+                resize_ratio = resize_ratio_step
+            print(f'[INFO] Resize ratio: {resize_ratio:.1f}')
+        # Add resize ratio to OSD
+        if round(resize_ratio, 3) != 1.0:
             OSD_text = f'[R: {resize_ratio:.1f}] {OSD_text}'
 
         # ====================================================================
