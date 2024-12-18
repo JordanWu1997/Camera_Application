@@ -2,25 +2,32 @@
 # -*- coding:utf-8 -*-
 """
 My Simple Camera Function Collections, including
+
+[Image Processing]
 1. Snapshot
 2. Brightness, Contrast, Noise-suppression, Grayscale
 3. Zoom-in/-out, Rotation, Translation
-4. QR-Code Decoder
-5. Barcode Decoder
-6. Resize for display (for high/low res. camera on low/high res. monitor)
+4. Resize for display (for high/low res. camera on low/high res. monitor)
 
-TODO
-1. Add object detection, tracking, foregournd detection, etc
-2. Add optical character recognition (OCR) e.g. Tesseract, PaddleOCR, etc
+[Futher Application]
+1. QR-Code Decoder
+2. Barcode Decoder
+3. optical character recognition (OCR) with Tesseract
+
+[TODO]
+1. Add perspective transform
+2. Add object detection, tracking, foregournd detection, etc
 3. Record as video or GIF (also combine audio input)
 
-References
+[References]
 -- https://steam.oxxostudio.tw/category/python/ai/opencv-take-picture.html
 -- https://steam.oxxostudio.tw/category/python/ai/opencv-keyboard.html
 -- https://steam.oxxostudio.tw/category/python/ai/opencv-qrcode-barcode.html
 -- https://steam.oxxostudio.tw/category/python/ai/opencv-negative.html
 -- https://stackoverflow.com/questions/69050464/zoom-into-image-with-opencv
 -- https://claude.ai
+-- https://github.com/madmaze/pytesseract
+-- https://github.com/tesseract-ocr/tesseract
 
 # ========================================================================== #
 #  _  __   _   _                                          __        ___   _  #
@@ -41,6 +48,8 @@ from datetime import datetime
 import cv2
 import numpy as np
 import pyperclip
+import pytesseract
+from PIL import Image, ImageDraw, ImageFont
 from pyzbar import pyzbar
 
 
@@ -139,6 +148,28 @@ def put_text_to_canvas(image,
     cv2.putText(image, text, (top_left[0], top_left[1]),
                 cv2.FONT_HERSHEY_SIMPLEX, font_scale, fg_color, thickness,
                 cv2.LINE_AA)
+
+
+def put_chinese_text_to_canvas(
+        image,
+        text,
+        top_left=(0, 0),
+        bg_color=(0, 0, 0),
+        fg_color=(255, 255, 255),
+        font_path='./font/Noto_Sans_TC/static/NotoSansTC-Black.ttf',
+        font_size=15):
+    """
+    References
+    -- https://blog.csdn.net/qq_31112205/article/details/100828420
+    -- https://steam.oxxostudio.tw/category/python/ai/opencv-text.html
+    """
+    pil_img = Image.fromarray(image)
+    draw = ImageDraw.Draw(pil_img)
+    font = ImageFont.truetype(font_path, font_size, encoding='utf-8')
+    draw.text((top_left[0] + 2, top_left[1] + 2), text, bg_color, font=font)
+    draw.text((top_left), text, fg_color, font=font)
+    image = np.array(pil_img)
+    return image
 
 
 def toggle_bool_option(bool_option):
@@ -311,6 +342,7 @@ def main():
     zoom, rotation, center_x_offset, center_y_offset = 1.0, 0, 0, 0
     zoom_step, rotation_step, offset_step = 0.1, 15, 100
     resize_ratio_step = 0.1
+    OCR_skip_frame, chars, boxes, text = 10, [], [], ''
     # Flag
     zbar_decoder_on = args.zbar_decoder
     barcode_decoder_on = args.qrcode_decoder
@@ -323,12 +355,13 @@ def main():
     # Noise suppression
     noise_suppression_methods = ['Off', 'Gaussian', 'Median', 'Bilateral']
     noise_suppression_method = noise_suppression_methods[0]
-    # Grayscale
-    grayscale_on = False
-    # Negative
-    negative_on = False
+    # Grayscale, Negative
+    grayscale_on, negative_on = False, False
+    # OCR
+    OCR_on = False
 
     # Main
+    counter = 0
     while True:
 
         # Read frame
@@ -337,6 +370,7 @@ def main():
             print('[ERROR] Cannot get image from source ... Retrying ...')
             time.sleep(0.1)
             continue
+        counter += 1
 
         # Get image geometry: size, center
         height, width, _ = frame.shape
@@ -516,6 +550,41 @@ def main():
             if decode_with_zbar(canvas, verbose=verbose):
                 if exit_after_result_returned:
                     break
+
+        # ====================================================================
+        # Module: OCR with tesseract
+        # ====================================================================
+        if key == ord('o'):
+            OCR_on = toggle_bool_option(OCR_on)
+        if OCR_on:
+            OSD_text += f'[OCR {OCR_skip_frame:d}] '
+            # OCR every skip_frame
+            if counter % OCR_skip_frame == 0 and counter > OCR_skip_frame:
+                result = pytesseract.image_to_boxes(canvas,
+                                                    lang='chi_tra',
+                                                    config='--oem 1')
+                chars, boxes = [], []
+                text = ''
+                for i, line in enumerate(result.split('\n')):
+                    cols = line.split(' ')
+                    if len(cols) == 1:
+                        continue
+                    char = cols[0]
+                    text += char
+                    x1, y1 = int(cols[1]), height - int(cols[2])
+                    x2, y2 = int(cols[3]), height - int(cols[4])
+                    chars.append(char)
+                    boxes.append([x1, y1, x2, y2])
+            # Visualize OCR result
+            for char, box in zip(chars, boxes):
+                x1, y1, x2, y2 = box
+                cv2.rectangle(canvas, (x1, y1), (x2, y2), (0, 0, 255), 1)
+                canvas = put_chinese_text_to_canvas(canvas,
+                                                    char,
+                                                    top_left=(x1, y1))
+            if verbose:
+                if len(text) > 1:
+                    print(f'[INFO] OCR Text: {text}')
 
         # ====================================================================
         # Module: Calculate FPS (NOTE: FPS = 1 / elapse)
