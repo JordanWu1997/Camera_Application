@@ -28,6 +28,7 @@ My Simple Camera Function Collections, including
 -- https://claude.ai
 -- https://github.com/madmaze/pytesseract
 -- https://github.com/tesseract-ocr/tesseract
+-- https://snyk.io/blog/secure-python-url-validation/
 
 # ========================================================================== #
 #  _  __   _   _                                          __        ___   _  #
@@ -44,6 +45,7 @@ import os
 import sys
 import time
 from datetime import datetime
+from urllib.parse import urlparse
 
 import cv2
 import numpy as np
@@ -51,6 +53,22 @@ import pyperclip
 import pytesseract
 from PIL import Image, ImageDraw, ImageFont
 from pyzbar import pyzbar
+
+
+def get_available_devices(number_of_devices=10, max_index=1000, verbose=False):
+    """  """
+    index, found_devices = 0, 0
+    devices = []
+    while (found_devices <= number_of_devices) and (index < max_index):
+        cap = cv2.VideoCapture(index)
+        if cap.read()[0]:
+            devices.append(index)
+            found_devices += 1
+        cap.release()
+        index += 1
+    if verbose:
+        print(devices)
+    return devices
 
 
 def color_adjust(i, c, b):
@@ -286,7 +304,15 @@ def main():
 
     # Parse input
     parser = argparse.ArgumentParser()
-
+    parser.add_argument('-l',
+                        '--list-devices',
+                        action='store_true',
+                        help='Get available device list')
+    parser.add_argument('-i',
+                        '--input_device',
+                        default=None,
+                        type=str,
+                        help='Input device, file or strearming URL')
     parser.add_argument('-o',
                         '--output_dir',
                         default='./',
@@ -320,16 +346,36 @@ def main():
 
     args = parser.parse_args()
 
-    # 0 means camera on computer (sometimes maybe 1)
-    camera_detected, camera_id = False, None
-    for i in [0, 1]:
-        cap = cv2.VideoCapture(i)
-        if cap.isOpened():
-            camera_detected = True
-            camera_id = i
-            break
-    if not camera_detected:
-        sys.exit('[ERROR] Cannot detect camera ...')
+    # List available devices
+    if args.list_devices:
+        devices = get_available_devices(verbose=args.verbose)
+        sys.exit(f'[INFO] Found devices: {devices}')
+
+    # Get video device (0 means camera on computer, sometimes maybe 1)
+    input_device = args.input_device
+    if input_device is None:
+        input_device = get_available_devices(number_of_devices=1)[0]
+        print('[INFO] Use first found device as input device')
+
+    # Check if input is an URL
+    result = urlparse(input_device)
+    if result.scheme and result.netloc:
+        print(f'[INFO] Input URL: {input_device}')
+    # Check if input is a file
+    elif os.path.isfile(input_device):
+        print(f'[INFO] Input file: {input_device}')
+    # Check if input is a device
+    else:
+        try:
+            input_device = int(input_device)
+            print(f'[INFO] Input device: {input_device}')
+        except ValueError:
+            sys.exit(f'[ERROR] Cannot parse input {input_device} ...')
+
+    # Get video
+    cap = cv2.VideoCapture(input_device)
+    if not cap.isOpened():
+        sys.exit(f'[ERROR] Cannot open input {input_device} ...')
 
     # QR Code Detector
     qrcode_detector = cv2.QRCodeDetector()
@@ -643,7 +689,7 @@ def main():
                                thickness=1)
 
         # Display
-        cv2.imshow(f'Camera {camera_id:d}', canvas)
+        cv2.imshow(f'Device: {input_device}', canvas)
 
     cap.release()
     cv2.destroyAllWindows()
