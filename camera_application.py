@@ -9,7 +9,7 @@ My Simple Camera Function Collections, including
 3. Zoom-in/-out, Rotation, Translation
 4. Resize for display (for high/low res. camera on low/high res. monitor)
 
-[Futher Application]
+[Application]
 1. QR-Code Decoder
 2. Barcode Decoder
 3. optical character recognition (OCR) with Tesseract
@@ -354,7 +354,7 @@ def main():
     # Get video device (0 means camera on computer, sometimes maybe 1)
     input_device = args.input_device
     if input_device is None:
-        input_device = get_available_devices(number_of_devices=1)[0]
+        input_device = str(get_available_devices(number_of_devices=1)[0])
         print('[INFO] Use first found device as input device')
 
     # Check if input is an URL
@@ -386,7 +386,7 @@ def main():
     # Init
     alpha, contrast, brightness = 0, 0, 0
     zoom, rotation, center_x_offset, center_y_offset = 1.0, 0, 0, 0
-    zoom_step, rotation_step, offset_step = 0.1, 15, 100
+    zoom_step, rotation_step, offset_step = 0.1, 30, 100
     resize_ratio_step = 0.1
     OCR_skip_frame, chars, boxes, text = 10, [], [], ''
     # Flag
@@ -485,8 +485,12 @@ def main():
             if abs(rotation) > 360:
                 rotation = 0
             print(f'[INFO] Rotation: {rotation:d}')
+        # Restore geometric transform to default
+        if key == ord('d'):
+            zoom, rotation, center_x_offset, center_y_offset = 1.0, 0, 0, 0
         # Show info on OSD
-        OSD_text += f'Z: {zoom:.1f} R: {rotation:d} '
+        OSD_text += f'R: {rotation:d} Z: {zoom:.1f} '
+        OSD_text += f'X: {center_x_offset:d} Y: {center_y_offset:d} '
 
         # ====================================================================
         # Module: Noise suppression
@@ -567,7 +571,7 @@ def main():
         # ====================================================================
         # Module: Decode QR Code
         # ====================================================================
-        if key == ord('d'):
+        if key == ord('c'):
             qrcode_decoder_on = toggle_bool_option(qrcode_decoder_on)
         if qrcode_decoder_on:
             OSD_text += '[CV QR Code Decoder] '
