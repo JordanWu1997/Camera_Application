@@ -14,14 +14,18 @@
 """
 
 import argparse
-import sys
 import time
 
 import cv2
 
+from utils import parse_video_device
 
-def play_URL(input_URL):
+
+def play_URL(input_URL, YT_URL=False):
     """  """
+
+    # Convert YT URL
+    input_URL = parse_video_device(input_URL, YT_URL=YT_URL)
 
     # Capture URL
     cap = cv2.VideoCapture(input_URL)
@@ -57,11 +61,17 @@ def play_URL(input_URL):
 
 def main():
 
+    # Input
     parser = argparse.ArgumentParser()
     parser.add_argument('input_URL', type=str, help='Input URL to play')
+    parser.add_argument('-y',
+                        '--YT_URL',
+                        help='If input URL is youtube URL',
+                        action='store_true')
     args = parser.parse_args()
 
-    play_URL(args.input_URL)
+    # Main
+    play_URL(args.input_URL, YT_URL=args.YT_URL)
 
 
 if __name__ == '__main__':

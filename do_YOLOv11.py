@@ -17,27 +17,11 @@ import argparse
 import os
 import sys
 import time
-from urllib.parse import urlparse
 
 import cv2
-
 from ultralytics import YOLO
 
-
-def get_available_devices(number_of_devices=10, max_index=1000, verbose=False):
-    """  """
-    index, found_devices = 0, 0
-    devices = []
-    while (found_devices <= number_of_devices) and (index < max_index):
-        cap = cv2.VideoCapture(index)
-        if cap.read()[0]:
-            devices.append(index)
-            found_devices += 1
-        cap.release()
-        index += 1
-    if verbose:
-        print(devices)
-    return devices
+from utils import get_available_devices, parse_video_device
 
 
 def put_text_to_canvas(image,
@@ -82,10 +66,10 @@ def main():
     # Model Dict
     model_dict = {
         0: './weights/yolo11n.pt',
-        1: './weights/yolo11n-seg.pt',
-        2: './weights/yolo11n-pose.pt',
-        3: './weights/yolo11n-obb.pt',
-        # 4: './weights/yolo11n-cls.pt',
+        1: './weights/yolov8s-worldv2.pt',
+        2: './weights/yolo11n-seg.pt',
+        3: './weights/yolo11n-pose.pt',
+        4: './weights/yolo11n-obb.pt',
     }
 
     # Input argument
@@ -99,6 +83,10 @@ def main():
                         default=None,
                         type=str,
                         help='Input device, file or strearming URL')
+    parser.add_argument('-y',
+                        '--YT_URL',
+                        help='If input URL is youtube URL',
+                        action='store_true')
     parser.add_argument('-r',
                         '--resize_ratio',
                         default=1.0,
@@ -132,26 +120,8 @@ def main():
         sys.exit(f'[ERROR] Model weight: {model_weight} not found')
     model = YOLO(model_weight)
 
-    # Get video device (0 means camera on computer, sometimes maybe 1)
-    input_device = args.input_device
-    if input_device is None:
-        input_device = str(get_available_devices(number_of_devices=1)[0])
-        print('[INFO] Use first found device as input device')
-
-    # Check if input is an URL
-    result = urlparse(input_device)
-    if result.scheme and result.netloc:
-        print(f'[INFO] Input URL: {input_device}')
-    # Check if input is a file
-    elif os.path.isfile(input_device):
-        print(f'[INFO] Input file: {input_device}')
-    # Check if input is a device
-    else:
-        try:
-            input_device = int(input_device)
-            print(f'[INFO] Input device: {input_device}')
-        except ValueError:
-            sys.exit(f'[ERROR] Cannot parse input {input_device} ...')
+    # Get input device
+    input_device = parse_video_device(args.input_device, YT_URL=args.YT_URL)
 
     # Capture URL
     cap = cv2.VideoCapture(input_device)
@@ -248,10 +218,10 @@ def main():
             # Get bboxes, clss, track_ids, elapse
             boxes, elapse = results[0].boxes, results[0].speed
             obj_names = results[0].names
-            if results[0].boxes is not None:
-                bboxes = results[0].boxes.xywh.cpu().tolist()
-                clss = results[0].boxes.cls.int().cpu().tolist()
-                if results[0].boxes.id is not None:
+            if boxes is not None:
+                bboxes = boxes.xywh.cpu().tolist()
+                clss = boxes.cls.int().cpu().tolist()
+                if boxes.id is not None:
                     track_ids = results[0].boxes.id.int().cpu().tolist()
             # Visualize the results on the frame
             canvas = results[0].plot()
@@ -278,7 +248,7 @@ def main():
                            thickness=1)
 
         # Display the annotated frame
-        cv2.imshow(f"YOLO11: {input_device}", canvas)
+        cv2.imshow(f"YOLOv11: {input_device}", canvas)
 
     cap.release()
     cv2.destroyAllWindows()
