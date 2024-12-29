@@ -45,7 +45,6 @@ import os
 import sys
 import time
 from datetime import datetime
-from urllib.parse import urlparse
 
 import cv2
 import numpy as np
@@ -54,21 +53,8 @@ import pytesseract
 from PIL import Image, ImageDraw, ImageFont
 from pyzbar import pyzbar
 
-
-def get_available_devices(number_of_devices=10, max_index=1000, verbose=False):
-    """  """
-    index, found_devices = 0, 0
-    devices = []
-    while (found_devices <= number_of_devices) and (index < max_index):
-        cap = cv2.VideoCapture(index)
-        if cap.read()[0]:
-            devices.append(index)
-            found_devices += 1
-        cap.release()
-        index += 1
-    if verbose:
-        print(devices)
-    return devices
+from utils import (cycle_options, get_available_devices, parse_video_device,
+                   toggle_bool_option)
 
 
 def color_adjust(i, c, b):
@@ -174,7 +160,7 @@ def put_chinese_text_to_canvas(
         top_left=(0, 0),
         bg_color=(0, 0, 0),
         fg_color=(255, 255, 255),
-        font_path='./font/Noto_Sans_TC/static/NotoSansTC-Black.ttf',
+        font_path='./fonts/Noto_Sans_TC/static/NotoSansTC-Black.ttf',
         font_size=15):
     """
     References
@@ -188,35 +174,6 @@ def put_chinese_text_to_canvas(
     draw.text((top_left), text, fg_color, font=font)
     image = np.array(pil_img)
     return image
-
-
-def toggle_bool_option(bool_option):
-    """  """
-    if bool_option is True:
-        bool_option = False
-    else:
-        bool_option = True
-    return bool_option
-
-
-def cycle_options(current_option, options):
-    """  """
-    # Check number of options
-    if len(options) < 2:
-        print(f'[ERROR] Too few options ({len(options):d}) in {options}')
-        return current_option
-    # Check if current option is in options
-    try:
-        current_index = options.index(current_option)
-    except ValueError:
-        print(f'[ERROR] Cannot find {current_option} in options {options}')
-        return current_index
-    # Index
-    if current_index == len(options) - 1:
-        next_index = 0
-    else:
-        next_index = current_index + 1
-    return options[next_index]
 
 
 def decode_qrcode(image, qrcode_detector, verbose=False):
@@ -313,6 +270,10 @@ def main():
                         default=None,
                         type=str,
                         help='Input device, file or strearming URL')
+    parser.add_argument('-y',
+                        '--YT_URL',
+                        help='If input URL is youtube URL',
+                        action='store_true')
     parser.add_argument('-o',
                         '--output_dir',
                         default='./',
@@ -351,26 +312,8 @@ def main():
         devices = get_available_devices(verbose=args.verbose)
         sys.exit(f'[INFO] Found devices: {devices}')
 
-    # Get video device (0 means camera on computer, sometimes maybe 1)
-    input_device = args.input_device
-    if input_device is None:
-        input_device = str(get_available_devices(number_of_devices=1)[0])
-        print('[INFO] Use first found device as input device')
-
-    # Check if input is an URL
-    result = urlparse(input_device)
-    if result.scheme and result.netloc:
-        print(f'[INFO] Input URL: {input_device}')
-    # Check if input is a file
-    elif os.path.isfile(input_device):
-        print(f'[INFO] Input file: {input_device}')
-    # Check if input is a device
-    else:
-        try:
-            input_device = int(input_device)
-            print(f'[INFO] Input device: {input_device}')
-        except ValueError:
-            sys.exit(f'[ERROR] Cannot parse input {input_device} ...')
+    # Get input device
+    input_device = parse_video_device(args.input_device, YT_URL=args.YT_URL)
 
     # Get video
     cap = cv2.VideoCapture(input_device)
