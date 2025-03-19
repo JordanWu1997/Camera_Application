@@ -21,7 +21,7 @@ import time
 import cv2
 from ultralytics import YOLO
 
-from utils import get_available_devices, parse_video_device
+from utils import get_available_devices, parse_video_device, toggle_bool_option
 
 
 def put_text_to_canvas(image,
@@ -107,6 +107,11 @@ def main():
                         '--enable_tracking',
                         action='store_true',
                         help='Enable tracking for object detection')
+    parser.add_argument(
+        '--classes',
+        nargs='+',
+        default=None,
+        help='Specify classes of objects to detect [mode 1 only]')
     args = parser.parse_args()
 
     # List available devices
@@ -114,11 +119,21 @@ def main():
         devices = get_available_devices(verbose=True)
         sys.exit(f'[INFO] Found devices: {devices}')
 
+    # Init
+    show_OSD = True
+
     # Load model
     model_weight = model_dict[args.mode]
     if not os.path.isfile(model_weight):
         sys.exit(f'[ERROR] Model weight: {model_weight} not found')
     model = YOLO(model_weight)
+    if args.classes is not None:
+        if args.mode == 1:
+            model.set_classes(args.classes)
+        else:
+            print(
+                '[WARNING] Only mode 1 supports classes specification. Ignore it ...'
+            )
 
     # Get input device
     input_device = parse_video_device(args.input_device, YT_URL=args.YT_URL)
@@ -240,12 +255,15 @@ def main():
         OSD_text += f'FPS: {FPS:.1f}, '
         OSD_text += f'Playspeed: {playspeed:d}, '
         OSD_text += f'Infer every {skip_frame:d} frame'
-        put_text_to_canvas(canvas,
-                           OSD_text,
-                           top_left=(10, 30),
-                           font_scale=0.5,
-                           fg_color=(0, 255, 0),
-                           thickness=1)
+        if key == 13:  # Enter
+            show_OSD = toggle_bool_option(show_OSD)
+        if show_OSD:
+            put_text_to_canvas(canvas,
+                               OSD_text,
+                               top_left=(10, 30),
+                               font_scale=0.5,
+                               fg_color=(0, 255, 0),
+                               thickness=1)
 
         # Display the annotated frame
         cv2.imshow(f"YOLOv11: {input_device}", canvas)

@@ -12,7 +12,7 @@ My Simple Camera Function Collections, including
 [Application]
 1. QR-Code Decoder
 2. Barcode Decoder
-3. optical character recognition (OCR) with Tesseract
+3. Optical character recognition (OCR) with Tesseract
 
 [TODO]
 1. Add perspective transform
@@ -45,6 +45,7 @@ import os
 import sys
 import time
 from datetime import datetime
+from typing import Optional, Tuple
 
 import cv2
 import numpy as np
@@ -57,16 +58,38 @@ from utils import (cycle_options, get_available_devices, parse_video_device,
                    toggle_bool_option)
 
 
-def color_adjust(i, c, b):
-    """  """
+def color_adjust(i: int, c: float, b: int) -> np.uint8:
+    """Adjusts the color of an image by applying a linear transformation.
+
+    Args:
+        i (int): The input value.
+        c (float): The coefficient for the linear transformation.
+        b (int): The bias term for the linear transformation.
+
+    Returns:
+        np.uint8: The adjusted color value as an 8-bit unsigned integer.
+    """
     output = i * (c / 100 + 1) - c + b
     output = np.clip(output, 0, 255)
     output = np.uint8(output)
     return output
 
 
-def geometric_transform(image, zoom=1.0, rotation=0, center=None):
-    """  """
+def geometric_transform(image: np.ndarray,
+                        zoom: float = 1.0,
+                        rotation: float = 0,
+                        center: Optional[tuple] = None) -> np.ndarray:
+    """ Applies a geometric transformation to an image.
+
+    Args:
+        image (np.ndarray): The input image.
+        zoom (float): The zoom factor for the transformation. Defaults to 1.0.
+        rotation (float): The rotation angle in degrees. Defaults to 0.
+        center (Optional[tuple]): The center point of the transformation. Defaults to the center of the image.
+
+    Returns:
+        np.ndarray: The transformed image.
+    """
     cy, cx = [i / 2
               for i in image.shape[:-1]] if center is None else center[::-1]
     rotation_matrix = cv2.getRotationMatrix2D((cx, cy), rotation, zoom)
@@ -78,8 +101,17 @@ def geometric_transform(image, zoom=1.0, rotation=0, center=None):
 
 
 def suppress_noise(image, method='Off'):
-    """  """
-    # Off
+    """
+    Suppress noise from an image using various methods.
+
+    Parameters:
+    - image (numpy.ndarray): The input image.
+    - method (str): The noise suppression method. Options are 'Off', 'Gaussian', 'Median', and 'Bilateral'.
+      Default is 'Off'.
+
+    Returns:
+    - numpy.ndarray: The processed image with noise suppressed.
+    """
     if method == 'Off':
         return image
     # Gaussian Blur
@@ -107,15 +139,32 @@ def suppress_noise(image, method='Off'):
 
 
 def grayscale(image, channels=3):
-    """  """
+    """
+    Convert an image to grayscale.
+
+    Parameters:
+    - image: The input image as a NumPy array.
+    - channels (int): The number of color channels for the output image. Default is 3.
+
+    Returns:
+    - A new image in grayscale format with the specified number of channels.
+    """
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     multi_chan_gray = cv2.merge([gray] * channels)
     return multi_chan_gray
 
 
-def negative(image):
-    image = 255 - image
-    return image
+def negative(image: np.ndarray) -> np.ndarray:
+    """
+    Inverts the given image by subtracting it from 255.
+
+    Parameters:
+    image (np.ndarray): The input image as a NumPy array.
+
+    Returns:
+    np.ndarray: The inverted image.
+    """
+    return 255 - image
 
 
 def resize_for_display(image,
@@ -123,7 +172,18 @@ def resize_for_display(image,
                        height=1080,
                        resize_ratio=1.0,
                        min_resize_ratio=0.1):
-    """  """
+    """ Resize an image to fit display dimensions.
+
+    Args:
+        image (numpy.ndarray): The input image.
+        width (int, optional): The desired width of the resized image. Defaults to 1920.
+        height (int, optional): The desired height of the resized image. Defaults to 1080.
+        resize_ratio (float, optional): The ratio by which to resize the image. Defaults to 1.0.
+        min_resize_ratio (float, optional): The minimum allowed resize ratio. Defaults to 0.1.
+
+    Returns:
+        numpy.ndarray: The resized image.
+    """
     # Early stop
     if round(resize_ratio, 3) == 1.0:
         return image
@@ -138,20 +198,34 @@ def resize_for_display(image,
     return image
 
 
-def put_text_to_canvas(image,
-                       text,
-                       top_left=(0, 0),
-                       fg_color=(255, 255, 255),
-                       bg_color=(0, 0, 0),
-                       font_scale=0.75,
-                       thickness=2):
-    """  """
+def put_text_to_canvas(image: np.ndarray,
+                       text: str,
+                       top_left: Tuple[int, int] = (0, 0),
+                       fg_color: Tuple[int, int, int] = (255, 255, 255),
+                       bg_color: Tuple[int, int, int] = (0, 0, 0),
+                       font_scale: float = 0.75,
+                       thickness: int = 2) -> np.ndarray:
+    """ Adds text to the image at the specified position with different colors and fonts.
+
+    Parameters:
+    - image: The input image as a numpy array.
+    - text: The text to be added to the image.
+    - top_left: The top-left corner of the text in pixels. Default is (0, 0).
+    - fg_color: The foreground color of the text as a tuple of three integers (R, G, B). Default is white (255, 255, 255).
+    - bg_color: The background color of the text as a tuple of three integers (R, G, B). Default is black (0, 0, 0).
+    - font_scale: The scale factor for the font size. Default is 0.75.
+    - thickness: The thickness of the text outline. Default is 2.
+
+    Returns:
+    - A numpy array with the text added to the image.
+    """
     cv2.putText(image, text, (top_left[0] + 2, top_left[1] + 2),
                 cv2.FONT_HERSHEY_SIMPLEX, font_scale, bg_color, thickness,
                 cv2.LINE_AA)
     cv2.putText(image, text, (top_left[0], top_left[1]),
                 cv2.FONT_HERSHEY_SIMPLEX, font_scale, fg_color, thickness,
                 cv2.LINE_AA)
+    return image
 
 
 def put_chinese_text_to_canvas(
@@ -177,7 +251,16 @@ def put_chinese_text_to_canvas(
 
 
 def decode_qrcode(image, qrcode_detector, verbose=False):
-    """  """
+    """ Decodes a QR code from an image using the provided detector.
+
+    Args:
+        image (np.ndarray): The input image containing the QR code.
+        qrcode_detector: An instance of a QR code detector class.
+        verbose (bool): If True, prints debug information about the decoded QR code.
+
+    Returns:
+        bool: True if a QR code was successfully decoded and copied to the clipboard, False otherwise.
+    """
     data, bbox, rectified = qrcode_detector.detectAndDecode(image)
     if bbox is not None:
         xs = [int(x) for (x, y) in bbox[0]]
@@ -189,7 +272,6 @@ def decode_qrcode(image, qrcode_detector, verbose=False):
                       (qrcode_bbox[2], qrcode_bbox[3]), (0, 0, 255), 2)
         # Copy text to clipboard
         if len(data) > 0:
-            # Add text
             put_text_to_canvas(image,
                                data,
                                top_left=(qrcode_bbox[0], qrcode_bbox[1]),
@@ -205,7 +287,16 @@ def decode_qrcode(image, qrcode_detector, verbose=False):
 
 
 def decode_barcode(image, barcode_detector, verbose=False):
-    """  """
+    """ Detects and decodes a barcode from an image using the provided detector.
+
+    Args:
+        image (numpy.ndarray): The input image containing the barcode.
+        barcode_detector: An object that can detect barcodes in the image.
+        verbose (bool): If True, prints information about the detected barcode.
+
+    Returns:
+        bool: True if a barcode was successfully decoded and copied to the clipboard, False otherwise.
+    """
     data, data_type, bbox = barcode_detector.detectAndDecode(image)
     if bbox is not None:
         xs = [int(x) for (x, y) in bbox[0]]
@@ -217,7 +308,6 @@ def decode_barcode(image, barcode_detector, verbose=False):
                       (barcode_bbox[2], barcode_bbox[3]), (0, 255, 255), 2)
         # Copy text to clipboard
         if len(data) > 0:
-            # Add text
             put_text_to_canvas(image,
                                data,
                                top_left=(barcode_bbox[0], barcode_bbox[1]),
@@ -232,7 +322,15 @@ def decode_barcode(image, barcode_detector, verbose=False):
 
 
 def decode_with_zbar(image, verbose=False):
-    """  """
+    """ Decode QR codes from an image using the pyzbar library.
+
+    Args:
+        image (np.ndarray): The input image as a NumPy array.
+        verbose (bool, optional): If True, print decoded texts to the console. Defaults to False.
+
+    Returns:
+        bool: True if any QR code is found and decoded, False otherwise.
+    """
     decoded_result = pyzbar.decode(image)
     if decoded_result != []:
         for decoded in decoded_result:

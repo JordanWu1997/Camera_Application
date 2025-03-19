@@ -21,8 +21,16 @@ import cv2
 from utils import parse_video_device
 
 
-def play_URL(input_URL, YT_URL=False):
-    """  """
+def play_URL(input_URL: str, YT_URL: bool = False) -> None:
+    """ Play a video from the provided URL. If YT_URL is True, it will convert the input URL to a YouTube URL.
+
+    Args:
+        input_URL (str): The URL of the video to be played.
+        YT_URL (bool, optional): Whether to convert the input URL to a YouTube URL. Defaults to False.
+
+    Returns:
+        None
+    """
 
     # Convert YT URL
     input_URL = parse_video_device(input_URL, YT_URL=YT_URL)
