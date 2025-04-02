@@ -8,69 +8,58 @@
 # | |/ /  | | | |  Author: Jordan Kuan-Hsien Wu           \ \      / / | | | #
 # | ' /   | |_| |  E-mail: jordankhwu@gmail.com            \ \ /\ / /| | | | #
 # | . \   |  _  |  Github: https://github.com/JordanWu1997  \ V  V / | |_| | #
-# |_|\_\  |_| |_|  Datetime: 2024-12-22 16:11:23             \_/\_/   \___/  #
+# |_|\_\  |_| |_|  Datetime: 2025-04-02 21:02:33             \_/\_/   \___/  #
 #                                                                            #
 # ========================================================================== #
 """
 
 import argparse
-import os
 import sys
 import time
+from random import randint
 
 import cv2
-from ultralytics import YOLO
+import numpy as np
+from ultralytics import SAM, YOLO, FastSAM
 
-from utils import get_available_devices, parse_video_device, toggle_bool_option
-
-
-def put_text_to_canvas(image,
-                       text,
-                       top_left=(0, 0),
-                       fg_color=(255, 255, 255),
-                       bg_color=(0, 0, 0),
-                       font_scale=0.75,
-                       thickness=2):
-    """  """
-    cv2.putText(image, text, (top_left[0] + 2, top_left[1] + 2),
-                cv2.FONT_HERSHEY_SIMPLEX, font_scale, bg_color, thickness,
-                cv2.LINE_AA)
-    cv2.putText(image, text, (top_left[0], top_left[1]),
-                cv2.FONT_HERSHEY_SIMPLEX, font_scale, fg_color, thickness,
-                cv2.LINE_AA)
+from object_detection import put_text_to_canvas
+from utils import parse_video_device, toggle_bool_option
 
 
-def resize_for_display(image,
-                       width=1920,
-                       height=1080,
-                       resize_ratio=1.0,
-                       min_resize_ratio=0.1):
-    """  """
-    # Early stop
-    if round(resize_ratio, 3) == 1.0:
-        return image
-    # Set minimal value
-    if resize_ratio < min_resize_ratio:
-        resize_ratio = min_resize_ratio
-    # Resize
-    resized_width = int(width * resize_ratio)
-    resized_height = int(height * resize_ratio)
-    image = cv2.resize(image, (resized_width, resized_height),
-                       interpolation=cv2.INTER_LINEAR)
-    return image
+def do_image_segmentation(image, model, mask_only=False):
+    # Get image geometry: size
+    height, width, _ = image.shape
+    # Segmenation
+    results = model.predict(image)
+    # Visualization (segmentation)
+    masks = results[0].masks.data.cpu().tolist()
+    # Init background canvas
+    if mask_only:
+        result_image = np.zeros_like(image, dtype=np.uint8)
+    else:
+        result_image = image.copy()
+    # Plot segmenation blocks
+    for i, mask in enumerate(masks):
+        mask = np.array(mask, dtype=bool)
+        canvas = np.zeros_like(mask, dtype=np.uint8)
+        canvas = np.array([canvas] * 3)
+        canvas = np.transpose(canvas, (1, 2, 0))
+        color = (randint(0, 255), randint(0, 255), randint(0, 255))
+        canvas[mask] = color
+        canvas = cv2.resize(canvas, (width, height))
+        result_image = cv2.addWeighted(result_image, 1, canvas, 0.5, 0)
+    return result_image
+
+
+def do_image_classification(image, model, canvas=None):
+    results = model(image)
+    if canvas is not None:
+        results[0].orig_img = canvas
+    result_image = results[0].plot()
+    return result_image
 
 
 def main():
-    """  """
-
-    # Model Dict
-    model_dict = {
-        0: './weights/yolo11n.pt',
-        1: './weights/yolov8s-worldv2.pt',
-        2: './weights/yolo11n-seg.pt',
-        3: './weights/yolo11n-pose.pt',
-        4: './weights/yolo11n-obb.pt',
-    }
 
     # Input argument
     parser = argparse.ArgumentParser()
@@ -92,53 +81,26 @@ def main():
                         default=1.0,
                         type=float,
                         help='Ratio to resize live display')
-    parser.add_argument('-f',
-                        '--start_frame',
-                        default=0,
-                        type=int,
-                        help='Frame to start')
     parser.add_argument('-m',
-                        '--mode',
-                        choices=[i for i in range(5)],
-                        default=0,
-                        type=int,
-                        help=f'{model_dict}')
-    parser.add_argument('-t',
-                        '--enable_tracking',
-                        action='store_true',
-                        help='Enable tracking for object detection')
+                        '--mask_only',
+                        help='Show segmenation mask for visualization',
+                        action='store_true')
     parser.add_argument('-s',
                         '--skip_frame',
                         type=int,
                         default=3,
                         help='Number of frame to skip')
-    parser.add_argument(
-        '--classes',
-        nargs='+',
-        default=None,
-        help='Specify classes of objects to detect [mode 1 only]')
+    parser.add_argument('-o',
+                        '--option',
+                        choices=['seg-cls', 'seg', 'cls'],
+                        default='seg-cls',
+                        help='Option: combination of seg. and cls.')
     args = parser.parse_args()
 
     # List available devices
     if args.list_devices:
         devices = get_available_devices(verbose=True)
         sys.exit(f'[INFO] Found devices: {devices}')
-
-    # Init
-    show_OSD = True
-
-    # Load model
-    model_weight = model_dict[args.mode]
-    if not os.path.isfile(model_weight):
-        sys.exit(f'[ERROR] Model weight: {model_weight} not found')
-    model = YOLO(model_weight)
-    if args.classes is not None:
-        if args.mode == 1:
-            model.set_classes(args.classes)
-        else:
-            print(
-                '[WARNING] Only mode 1 supports classes specification. Ignore it ...'
-            )
 
     # Get input device
     input_device = parse_video_device(args.input_device, YT_URL=args.YT_URL)
@@ -151,11 +113,14 @@ def main():
     else:
         print(f'[INFO] Start to play {input_device} ...')
 
-    # Jump to frame to start
-    if args.start_frame > 0:
-        print(f'[INFO] Jump to frame {args.start_frame} ...')
-        for _ in range(args.start_frame):
-            _, _ = cap.read()
+    # Init
+    show_OSD, mask_only = True, args.mask_only
+
+    # Load segmentation model
+    seg_model = FastSAM('./weights/FastSAM-s.pt')
+
+    # Load
+    cls_model = YOLO('./weights/yolo11n-cls.pt')
 
     # Main
     counter, skip_frame, playspeed = 0, args.skip_frame, 1
@@ -179,7 +144,6 @@ def main():
                     )
                     time.sleep(0.1)
             start = time.time()
-
         # Get image geometry: size
         height, width, _ = frame.shape
 
@@ -227,36 +191,42 @@ def main():
         if key == ord('a'):
             playspeed -= 1
             playspeed = min(playspeed, 1)
+        # Toggle mask_only option
+        if key == ord('m'):
+            mask_only = toggle_bool_option(mask_only)
+            print(f'[INFO] Mask_only option toggled. Mask_only: {mask_only}')
 
         # Perform object detection on an image
         if counter % skip_frame == 0 and counter > skip_frame:
-            # Object Detection w/ or w/o tracking
-            if args.enable_tracking:
-                results = model.track(frame, persist=True)
+            if args.option == 'seg-cls':
+                result_image = do_image_segmentation(frame,
+                                                     seg_model,
+                                                     mask_only=mask_only)
+                result_image = do_image_classification(frame,
+                                                       cls_model,
+                                                       canvas=result_image)
+            elif args.option == 'seg':
+                result_image = do_image_segmentation(frame,
+                                                     seg_model,
+                                                     mask_only=mask_only)
+            elif args.option == 'cls':
+                result_image = do_image_classification(frame, cls_model)
             else:
-                results = model(frame)
-            # Get bboxes, clss, track_ids, elapse
-            boxes, elapse = results[0].boxes, results[0].speed
-            obj_names = results[0].names
-            if boxes is not None:
-                bboxes = boxes.xywh.cpu().tolist()
-                clss = boxes.cls.int().cpu().tolist()
-                if boxes.id is not None:
-                    track_ids = results[0].boxes.id.int().cpu().tolist()
-            # Visualize the results on the frame
-            canvas = results[0].plot()
+                print(
+                    f'[WARNINGK] Invalid option: {args.option}. Ignore it ...')
 
         # Use previous result when object detection is ignored at current frame
-        else:
-            try:
-                results[0].orig_img = frame
-                canvas = results[0].plot()
-            except UnboundLocalError:
-                canvas = frame
+        try:
+            canvas = result_image.copy()
+        except UnboundLocalError:
+            canvas = frame
 
         # Add OSD
         FPS = 1 / (time.time() - start)
-        OSD_text = f'Input FPS: {input_FPS:.1f}, '
+        OSD_text = f'[{args.option}] '
+        if mask_only:
+            OSD_text += '[M] '
+        OSD_text += f'Input FPS: {input_FPS:.1f}, '
         OSD_text += f'FPS: {FPS:.1f}, '
         OSD_text += f'Playspeed: {playspeed:d}, '
         OSD_text += f'Infer every {skip_frame:d} frame'
@@ -271,7 +241,7 @@ def main():
                                thickness=1)
 
         # Display the annotated frame
-        cv2.imshow(f"YOLOv11: {input_device}", canvas)
+        cv2.imshow(f"FastSAM-s: {input_device}", canvas)
 
     cap.release()
     cv2.destroyAllWindows()
