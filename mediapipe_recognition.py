@@ -21,7 +21,7 @@ import cv2
 import mediapipe as mp
 import numpy as np
 
-from utils import parse_video_device
+from utils import parse_video_device, resize_image
 
 
 def get_available_devices(number_of_devices=10, max_index=1000, verbose=False):
@@ -267,6 +267,11 @@ class DetectionSystem:
 def main():
 
     parser = argparse.ArgumentParser()
+    parser.add_argument('-r',
+                        '--resize_ratio',
+                        default=1.0,
+                        type=float,
+                        help='Ratio to resize live display')
     parser.add_argument('-i',
                         '--input_device',
                         default=None,
@@ -299,6 +304,14 @@ def main():
             if not ret:
                 print("Error: Can't receive frame from stream.")
                 break
+
+            # Resize frame
+            height, width, _ = frame.shape
+            if round(args.resize_ratio, 3) != 1.0:
+                frame = resize_image(frame,
+                                     width=width,
+                                     height=height,
+                                     resize_ratio=args.resize_ratio)
 
             # Process frame
             start_time = time.time()

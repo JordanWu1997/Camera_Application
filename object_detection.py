@@ -21,43 +21,8 @@ import time
 import cv2
 from ultralytics import YOLO
 
-from utils import get_available_devices, parse_video_device, toggle_bool_option
-
-
-def put_text_to_canvas(image,
-                       text,
-                       top_left=(0, 0),
-                       fg_color=(255, 255, 255),
-                       bg_color=(0, 0, 0),
-                       font_scale=0.75,
-                       thickness=2):
-    """  """
-    cv2.putText(image, text, (top_left[0] + 2, top_left[1] + 2),
-                cv2.FONT_HERSHEY_SIMPLEX, font_scale, bg_color, thickness,
-                cv2.LINE_AA)
-    cv2.putText(image, text, (top_left[0], top_left[1]),
-                cv2.FONT_HERSHEY_SIMPLEX, font_scale, fg_color, thickness,
-                cv2.LINE_AA)
-
-
-def resize_for_display(image,
-                       width=1920,
-                       height=1080,
-                       resize_ratio=1.0,
-                       min_resize_ratio=0.1):
-    """  """
-    # Early stop
-    if round(resize_ratio, 3) == 1.0:
-        return image
-    # Set minimal value
-    if resize_ratio < min_resize_ratio:
-        resize_ratio = min_resize_ratio
-    # Resize
-    resized_width = int(width * resize_ratio)
-    resized_height = int(height * resize_ratio)
-    image = cv2.resize(image, (resized_width, resized_height),
-                       interpolation=cv2.INTER_LINEAR)
-    return image
+from utils import (get_available_devices, parse_video_device,
+                   put_text_to_canvas, resize_image, toggle_bool_option)
 
 
 def main():
@@ -151,6 +116,9 @@ def main():
     else:
         print(f'[INFO] Start to play {input_device} ...')
 
+    # Get frame property:  FPS
+    input_FPS = cap.get(cv2.CAP_PROP_FPS)
+
     # Jump to frame to start
     if args.start_frame > 0:
         print(f'[INFO] Jump to frame {args.start_frame} ...')
@@ -171,7 +139,7 @@ def main():
 
         # Speedup playing
         if playspeed > 1:
-            for _ in range(playspeed - 1):
+            for _ in range(int(playspeed) - 1):
                 ret, frame = cap.read()
                 if not ret:
                     print(
@@ -179,19 +147,24 @@ def main():
                     )
                     time.sleep(0.1)
             start = time.time()
+        elif playspeed < 1 and playspeed > 0:
+            FPS = input_FPS * playspeed
+            time.sleep(1 / FPS)
+            ret, frame = cap.read()
+            if not ret:
+                print('[ERROR] Cannot get image from source ... Retrying ...')
+                time.sleep(0.05)
+            start = time.time()
 
         # Get image geometry: size
         height, width, _ = frame.shape
 
-        # Get frame property:  FPS
-        input_FPS = cap.get(cv2.CAP_PROP_FPS)
-
         # Resize frame
         if round(args.resize_ratio, 3) != 1.0:
-            frame = resize_for_display(frame,
-                                       width=width,
-                                       height=height,
-                                       resize_ratio=args.resize_ratio)
+            frame = resize_image(frame,
+                                 width=width,
+                                 height=height,
+                                 resize_ratio=args.resize_ratio)
 
         # Refresh every 1 milisecond and detect pressed key
         key = cv2.waitKey(1)
@@ -223,10 +196,17 @@ def main():
             continue
         # Speedup playspeed
         if key == ord('s'):
-            playspeed += 1
+            if playspeed >= 1.0:
+                playspeed += 1.0
+            else:
+                playspeed += 0.25
+        # Speeddown playspeed
         if key == ord('a'):
-            playspeed -= 1
-            playspeed = min(playspeed, 1)
+            if playspeed >= 2.0:
+                playspeed -= 1.0
+            else:
+                playspeed -= 0.25
+                playspeed = max(playspeed, 0.25)
 
         # Perform object detection on an image
         if counter % skip_frame == 0 and counter > skip_frame:
@@ -245,6 +225,8 @@ def main():
                     track_ids = results[0].boxes.id.int().cpu().tolist()
             # Visualize the results on the frame
             canvas = results[0].plot()
+            # Infer FPS
+            infer_FPS = 1 / (time.time() - start)
 
         # Use previous result when object detection is ignored at current frame
         else:
@@ -254,11 +236,16 @@ def main():
             except UnboundLocalError:
                 canvas = frame
 
+        # infer_FPS
+        try:
+            infer_FPS = infer_FPS
+        except UnboundLocalError:
+            infer_FPS = -1
+
         # Add OSD
-        FPS = 1 / (time.time() - start)
         OSD_text = f'Input FPS: {input_FPS:.1f}, '
-        OSD_text += f'FPS: {FPS:.1f}, '
-        OSD_text += f'Playspeed: {playspeed:d}, '
+        OSD_text += f'Infer FPS: {infer_FPS:.1f}, '
+        OSD_text += f'Playspeed: {playspeed:.2f}, '
         OSD_text += f'Infer every {skip_frame:d} frame'
         if key == 13:  # Enter
             show_OSD = toggle_bool_option(show_OSD)

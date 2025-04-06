@@ -22,8 +22,8 @@ import cv2
 import numpy as np
 from ultralytics import SAM, YOLO, FastSAM
 
-from object_detection import put_text_to_canvas
-from utils import parse_video_device, toggle_bool_option
+from utils import (parse_video_device, put_text_to_canvas, resize_image,
+                   toggle_bool_option)
 
 
 def do_image_segmentation(image, model, mask_only=False):
@@ -31,13 +31,16 @@ def do_image_segmentation(image, model, mask_only=False):
     height, width, _ = image.shape
     # Segmenation
     results = model.predict(image)
-    # Visualization (segmentation)
-    masks = results[0].masks.data.cpu().tolist()
     # Init background canvas
     if mask_only:
         result_image = np.zeros_like(image, dtype=np.uint8)
     else:
         result_image = image.copy()
+    # Early stop
+    if results[0].masks is None:
+        return result_image
+    # Visualization (segmentation)
+    masks = results[0].masks.data.cpu().tolist()
     # Plot segmenation blocks
     for i, mask in enumerate(masks):
         mask = np.array(mask, dtype=bool)
@@ -136,13 +139,21 @@ def main():
 
         # Speedup playing
         if playspeed > 1:
-            for _ in range(playspeed - 1):
+            for _ in range(int(playspeed) - 1):
                 ret, frame = cap.read()
                 if not ret:
                     print(
                         '[ERROR] Cannot get image from source ... Retrying ...'
                     )
                     time.sleep(0.1)
+            start = time.time()
+        elif playspeed < 1 and playspeed > 0:
+            FPS = input_FPS * playspeed
+            time.sleep(1 / FPS)
+            ret, frame = cap.read()
+            if not ret:
+                print('[ERROR] Cannot get image from source ... Retrying ...')
+                time.sleep(0.05)
             start = time.time()
         # Get image geometry: size
         height, width, _ = frame.shape
@@ -152,10 +163,10 @@ def main():
 
         # Resize frame
         if round(args.resize_ratio, 3) != 1.0:
-            frame = resize_for_display(frame,
-                                       width=width,
-                                       height=height,
-                                       resize_ratio=args.resize_ratio)
+            frame = resize_image(frame,
+                                 width=width,
+                                 height=height,
+                                 resize_ratio=args.resize_ratio)
 
         # Refresh every 1 milisecond and detect pressed key
         key = cv2.waitKey(1)
@@ -187,10 +198,17 @@ def main():
             continue
         # Speedup playspeed
         if key == ord('s'):
-            playspeed += 1
+            if playspeed >= 1.0:
+                playspeed += 1.0
+            else:
+                playspeed += 0.25
+        # Speeddown playspeed
         if key == ord('a'):
-            playspeed -= 1
-            playspeed = min(playspeed, 1)
+            if playspeed >= 2.0:
+                playspeed -= 1.0
+            else:
+                playspeed -= 0.25
+                playspeed = max(playspeed, 0.25)
         # Toggle mask_only option
         if key == ord('m'):
             mask_only = toggle_bool_option(mask_only)
@@ -214,6 +232,8 @@ def main():
             else:
                 print(
                     f'[WARNINGK] Invalid option: {args.option}. Ignore it ...')
+            # Infer FPS
+            infer_FPS = 1 / (time.time() - start)
 
         # Use previous result when object detection is ignored at current frame
         try:
@@ -221,14 +241,19 @@ def main():
         except UnboundLocalError:
             canvas = frame
 
+        # Infer FPS
+        try:
+            infer_FPS = infer_FPS
+        except UnboundLocalError:
+            infer_FPS = -1
+
         # Add OSD
-        FPS = 1 / (time.time() - start)
         OSD_text = f'[{args.option}] '
         if mask_only:
             OSD_text += '[M] '
         OSD_text += f'Input FPS: {input_FPS:.1f}, '
-        OSD_text += f'FPS: {FPS:.1f}, '
-        OSD_text += f'Playspeed: {playspeed:d}, '
+        OSD_text += f'Infer FPS: {infer_FPS:.1f}, '
+        OSD_text += f'Playspeed: {playspeed:.2f}, '
         OSD_text += f'Infer every {skip_frame:d} frame'
         if key == 13:  # Enter
             show_OSD = toggle_bool_option(show_OSD)

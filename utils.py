@@ -158,3 +158,61 @@ def cycle_options(current_option, options):
         next_index = current_index + 1
 
     return options[next_index]
+
+
+def resize_image(image,
+                 width=1920,
+                 height=1080,
+                 resize_ratio=1.0,
+                 min_resize_ratio=0.1):
+    """  """
+    # Early stop
+    if round(resize_ratio, 3) == 1.0:
+        return image
+    # Set minimal value
+    if resize_ratio < min_resize_ratio:
+        resize_ratio = min_resize_ratio
+    # Resize
+    resized_width = int(width * resize_ratio)
+    resized_height = int(height * resize_ratio)
+    image = cv2.resize(image, (resized_width, resized_height),
+                       interpolation=cv2.INTER_LINEAR)
+    return image
+
+
+def put_text_to_canvas(image,
+                       text,
+                       top_left=(0, 0),
+                       fg_color=(255, 255, 255),
+                       bg_color=(0, 0, 0),
+                       font_scale=0.75,
+                       thickness=2):
+    """  """
+    cv2.putText(image, text, (top_left[0] + 2, top_left[1] + 2),
+                cv2.FONT_HERSHEY_SIMPLEX, font_scale, bg_color, thickness,
+                cv2.LINE_AA)
+    cv2.putText(image, text, (top_left[0], top_left[1]),
+                cv2.FONT_HERSHEY_SIMPLEX, font_scale, fg_color, thickness,
+                cv2.LINE_AA)
+
+
+def put_chinese_text_to_canvas(
+        image,
+        text,
+        top_left=(0, 0),
+        bg_color=(0, 0, 0),
+        fg_color=(255, 255, 255),
+        font_path='./fonts/Noto_Sans_TC/static/NotoSansTC-Black.ttf',
+        font_size=15):
+    """
+    References
+    -- https://blog.csdn.net/qq_31112205/article/details/100828420
+    -- https://steam.oxxostudio.tw/category/python/ai/opencv-text.html
+    """
+    pil_img = Image.fromarray(image)
+    draw = ImageDraw.Draw(pil_img)
+    font = ImageFont.truetype(font_path, font_size, encoding='utf-8')
+    draw.text((top_left[0] + 2, top_left[1] + 2), text, bg_color, font=font)
+    draw.text((top_left), text, fg_color, font=font)
+    image = np.array(pil_img)
+    return image
