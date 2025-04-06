@@ -55,7 +55,8 @@ from PIL import Image, ImageDraw, ImageFont
 from pyzbar import pyzbar
 
 from utils import (cycle_options, get_available_devices, parse_video_device,
-                   toggle_bool_option)
+                   put_chinese_text_to_canvas, put_text_to_canvas,
+                   resize_image, toggle_bool_option)
 
 
 def color_adjust(i: int, c: float, b: int) -> np.uint8:
@@ -165,89 +166,6 @@ def negative(image: np.ndarray) -> np.ndarray:
     np.ndarray: The inverted image.
     """
     return 255 - image
-
-
-def resize_for_display(image,
-                       width=1920,
-                       height=1080,
-                       resize_ratio=1.0,
-                       min_resize_ratio=0.1):
-    """ Resize an image to fit display dimensions.
-
-    Args:
-        image (numpy.ndarray): The input image.
-        width (int, optional): The desired width of the resized image. Defaults to 1920.
-        height (int, optional): The desired height of the resized image. Defaults to 1080.
-        resize_ratio (float, optional): The ratio by which to resize the image. Defaults to 1.0.
-        min_resize_ratio (float, optional): The minimum allowed resize ratio. Defaults to 0.1.
-
-    Returns:
-        numpy.ndarray: The resized image.
-    """
-    # Early stop
-    if round(resize_ratio, 3) == 1.0:
-        return image
-    # Set minimal value
-    if resize_ratio < min_resize_ratio:
-        resize_ratio = min_resize_ratio
-    # Resize
-    resized_width = int(width * resize_ratio)
-    resized_height = int(height * resize_ratio)
-    image = cv2.resize(image, (resized_width, resized_height),
-                       interpolation=cv2.INTER_LINEAR)
-    return image
-
-
-def put_text_to_canvas(image: np.ndarray,
-                       text: str,
-                       top_left: Tuple[int, int] = (0, 0),
-                       fg_color: Tuple[int, int, int] = (255, 255, 255),
-                       bg_color: Tuple[int, int, int] = (0, 0, 0),
-                       font_scale: float = 0.75,
-                       thickness: int = 2) -> np.ndarray:
-    """ Adds text to the image at the specified position with different colors and fonts.
-
-    Parameters:
-    - image: The input image as a numpy array.
-    - text: The text to be added to the image.
-    - top_left: The top-left corner of the text in pixels. Default is (0, 0).
-    - fg_color: The foreground color of the text as a tuple of three integers (R, G, B). Default is white (255, 255, 255).
-    - bg_color: The background color of the text as a tuple of three integers (R, G, B). Default is black (0, 0, 0).
-    - font_scale: The scale factor for the font size. Default is 0.75.
-    - thickness: The thickness of the text outline. Default is 2.
-
-    Returns:
-    - A numpy array with the text added to the image.
-    """
-    cv2.putText(image, text, (top_left[0] + 2, top_left[1] + 2),
-                cv2.FONT_HERSHEY_SIMPLEX, font_scale, bg_color, thickness,
-                cv2.LINE_AA)
-    cv2.putText(image, text, (top_left[0], top_left[1]),
-                cv2.FONT_HERSHEY_SIMPLEX, font_scale, fg_color, thickness,
-                cv2.LINE_AA)
-    return image
-
-
-def put_chinese_text_to_canvas(
-        image,
-        text,
-        top_left=(0, 0),
-        bg_color=(0, 0, 0),
-        fg_color=(255, 255, 255),
-        font_path='./fonts/Noto_Sans_TC/static/NotoSansTC-Black.ttf',
-        font_size=15):
-    """
-    References
-    -- https://blog.csdn.net/qq_31112205/article/details/100828420
-    -- https://steam.oxxostudio.tw/category/python/ai/opencv-text.html
-    """
-    pil_img = Image.fromarray(image)
-    draw = ImageDraw.Draw(pil_img)
-    font = ImageFont.truetype(font_path, font_size, encoding='utf-8')
-    draw.text((top_left[0] + 2, top_left[1] + 2), text, bg_color, font=font)
-    draw.text((top_left), text, fg_color, font=font)
-    image = np.array(pil_img)
-    return image
 
 
 def decode_qrcode(image, qrcode_detector, verbose=False):
@@ -429,7 +347,6 @@ def main():
     zoom, rotation, center_x_offset, center_y_offset = 1.0, 0, 0, 0
     zoom_step, rotation_step, offset_step = 0.1, 30, 100
     resize_ratio_step = 0.1
-    OCR_skip_frame, chars, boxes, text = 10, [], [], ''
     # Flag
     zbar_decoder_on = args.zbar_decoder
     barcode_decoder_on = args.qrcode_decoder
@@ -444,8 +361,6 @@ def main():
     noise_suppression_method = noise_suppression_methods[0]
     # Grayscale, Negative
     grayscale_on, negative_on = False, False
-    # OCR
-    OCR_on = False
 
     # Main
     counter = 0
@@ -643,41 +558,6 @@ def main():
                     break
 
         # ====================================================================
-        # Module: OCR with tesseract
-        # ====================================================================
-        if key == ord('o'):
-            OCR_on = toggle_bool_option(OCR_on)
-        if OCR_on:
-            OSD_text += f'[OCR {OCR_skip_frame:d}] '
-            # OCR every skip_frame
-            if counter % OCR_skip_frame == 0 and counter > OCR_skip_frame:
-                result = pytesseract.image_to_boxes(canvas,
-                                                    lang='chi_tra',
-                                                    config='--oem 1')
-                chars, boxes = [], []
-                text = ''
-                for i, line in enumerate(result.split('\n')):
-                    cols = line.split(' ')
-                    if len(cols) == 1:
-                        continue
-                    char = cols[0]
-                    text += char
-                    x1, y1 = int(cols[1]), height - int(cols[2])
-                    x2, y2 = int(cols[3]), height - int(cols[4])
-                    chars.append(char)
-                    boxes.append([x1, y1, x2, y2])
-            # Visualize OCR result
-            for char, box in zip(chars, boxes):
-                x1, y1, x2, y2 = box
-                cv2.rectangle(canvas, (x1, y1), (x2, y2), (0, 0, 255), 1)
-                canvas = put_chinese_text_to_canvas(canvas,
-                                                    char,
-                                                    top_left=(x1, y1))
-            if verbose:
-                if len(text) > 1:
-                    print(f'[INFO] OCR Text: {text}')
-
-        # ====================================================================
         # Module: Calculate FPS (NOTE: FPS = 1 / elapse)
         # ====================================================================
         FPS = 1 / (time.time() - start)
@@ -701,10 +581,10 @@ def main():
         # ====================================================================
         # Module: Resize for display
         # ====================================================================
-        canvas = resize_for_display(canvas,
-                                    width=width,
-                                    height=height,
-                                    resize_ratio=resize_ratio)
+        canvas = resize_image(canvas,
+                              width=width,
+                              height=height,
+                              resize_ratio=resize_ratio)
         # Expand
         if key == ord('+'):
             resize_ratio += resize_ratio_step
