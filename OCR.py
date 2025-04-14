@@ -244,7 +244,7 @@ def main():
                                thickness=1)
 
         # Display the annotated frame
-        cv2.imshow(f"YOLOv11: {input_device}", canvas)
+        cv2.imshow(f"OCR w/ Tesseract {args.lang}: {input_device}", canvas)
 
     cap.release()
     cv2.destroyAllWindows()
